@@ -1,0 +1,180 @@
+---
+title: "Exercise12"
+author: "Jessica V"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(readr)
+library(dtplyr)
+library(MASS)
+library(AICcmodavg)
+library(MuMIn)
+```
+
+
+
+```{r}
+f<- "https://raw.githubusercontent.com/difiore/ada-2024-datasets/main/Mammal_lifehistories_v2.txt"
+d <- read_tsv(f, col_names = TRUE, show_col_types = FALSE) 
+```
+Do a bit of exploratory data analysis with this dataset, e.g., using the {skimr} package. 
+Which of the variables are categorical and which are numeric?
+
+Numerica columns are : "mass(g)"  "gestation(mo)" "newborn(g)"    "weaning(mo)"   "wean mass(g)"  "AFR(mo)"       "max. life(mo)" "litter size"   "litters/year" and "refs".
+
+Character  columns are : "order"   "family"  "Genus" and  "species".
+```{r}
+
+head(d)
+
+summary(d)
+
+#Here I view the classes of all of the columns
+sapply(d, class)
+
+#Here I extract only numeric columns
+numericCols<-names(d)[sapply(d, is.numeric)]
+ 
+numericCols
+#Here I extract only character columns
+categoricalCols<-names(d)[sapply(d, is.character)]
+
+categoricalCols
+```
+
+# Challenge
+
+#Step 1
+
+Replace all values of -999 (the authors’ code for missing data) with NA.
+```{r}
+d[d== -999] <- NA
+head(d)
+```
+
+#Step 2
+
+Drop the variables "litter size" and "refs".
+
+```{r}
+colnames(d)
+
+newd <- d[, -c(12,14)]
+
+colnames(newd)
+```
+
+#Step 3
+
+Log transform all of the other numeric variables.
+
+```{r}
+
+lognewd <- newd %>%
+ mutate(across(where(is.numeric), ~log(.+1)))
+
+head(lognewd)
+```
+#Step 4
+
+Regress the age [gestation(mo), weaning(mo), AFR(mo), and max. life(mo)] and mass [newborn(g) and wean mass(g)] variables on overall body mass(g) and add the residuals to the dataframe as new variables (relGest, relWean, relAFR, relLife, relNewbornMass, and relWeaningMass).
+
+```{r}
+colnames(newd)
+
+age <- lm(cbind(`gestation(mo)`, `weaning(mo)`, `AFR(mo)`, `max. life(mo)`) ~ `mass(g)`, data=newd, na.action=na.exclude)
+
+mass <- lm(cbind(`newborn(g)`, `wean mass(g)`) ~ `mass(g)`, data =newd, na.action=na.exclude)
+
+newd$relGest <- residuals(age)[, "gestation(mo)"]
+
+newd$relWean <- residuals(age)[, "weaning(mo)"]
+
+newd$relAFR <- residuals(age)[, "AFR(mo)"]
+
+newd$relLife <- residuals(age)[,"max. life(mo)"]
+
+newd$relNewbornMass <- residuals(mass)[,"newborn(g)"]
+  
+newd$relWeaningMass <- residuals(mass)[,"wean mass(g)"]
+
+head(newd)
+colnames(newd)
+```
+
+#Step 5
+ 
+Plot residuals of max lifespan (relLife) in relation to Order. Which mammalian orders have the highest residual lifespan?
+Plot P:
+Probiscidea has the highest avg residual lifespan, followed by Cetacea and Sirenia.
+
+Plot residuals of newborn mass (relNewbornMass) in relation to Order. Which mammalian orders have the have highest residual newborn mass?
+Plot P1:
+Proboscidea has thehigest residual newborn mass, followed by perissodactyla.
+
+Plot residuals of weaning mass (relWeaningMass) in relation to Order. Which mammalian orders have the have highest relative weaning mass?
+Plot P2:
+Perissodactyla and Proboscidae
+
+
+```{r}
+
+p <- ggplot(data = newd, aes(x = `order`, y = `relLife` )) + geom_boxplot() + xlab("Order") +
+    theme(axis.text.x = element_text(angle = 90))
+
+
+plot(p)
+
+p1 <- ggplot(data = newd, aes(x = `order`, y = `relNewbornMass` )) + geom_boxplot() + xlab("Order") +
+    theme(axis.text.x = element_text(angle = 90))
+
+plot(p1)
+
+p2 <- ggplot(data = newd, aes(x = `order`, y = `relWeaningMass` )) + geom_boxplot() + xlab("Order") +
+    theme(axis.text.x = element_text(angle = 90))
+
+plot(p2)
+```
+
+#Step 6
+
+Run models and a model selection process to evaluate what (now log transformed) variables best predict each of the two response variables, max. life(mo) and AFR(mo), from the set of the following predictors: gestation(mo), newborn(g), weaning(mo), wean mass(g), litters/year, and overall body mass(g).
+
+
+
+For each of the two response variables, indicate what is the best model overall based on AICc and how many models have a delta AICc of 4 or less?
+
+What variables, if any, appear in all of this set of “top” models?
+Calculate and plot the model-averaged coefficients and their CIs across this set of top models.
+```{r}
+
+drop_na(newd)
+colnames(newd)
+#FOR max. life (mo)
+m <- lm(data = newd, `max. life(mo)` ~ `gestation(mo)`+ `newborn(g)`+ `weaning(mo)`+ `wean mass(g)`+ `litters/year`, + `mass(g)`) 
+
+(s <- stepAIC(m, scope = . ~ ., direction = "both"))
+summary (s)
+
+#For AFR(mo)
+m2 <- lm(data = newd, `AFR(mo)` ~ `gestation(mo)`+ `newborn(g)`+ `weaning(mo)`+ `wean mass(g)`+ `litters/year`, + `mass(g)`) 
+
+(s2 <- stepAIC(m2, scope = . ~ ., direction = "both"))
+
+summary(s2)
+```
+
+```{r}
+detach(package:MASS)
+library(AICcmodavg)
+#aictab(list(m0, m1, m2), c("m0", "m1", "m2"))
+detach(package:AICcmodavg)
+
+
+#(mods.avg <- summary(model.avg(mods, subset = delta < 4, fit = TRUE)))
+
+
+```
